@@ -3,6 +3,7 @@ package com.meng.api.core;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 
@@ -38,6 +39,12 @@ public class ApiStore {
     }
 
     private void addApiItem(APIMapping apiMapping, String beanName, Method method) {
+        //验证接口规范
+        for (Field field : method.getReturnType().getDeclaredFields()){
+            if(field.getDeclaringClass().equals(Object.class)){
+                throw new RuntimeException("method :" + method.getName() + "   返回值中字段类型不能为Object");
+            }
+        }
         ApiHanderAdapter apiHanderAdapter = new ApiHanderAdapter(applicationContext);
         apiHanderAdapter.apiMapping  = apiMapping;
         apiHanderAdapter.apiName = apiMapping.value();
