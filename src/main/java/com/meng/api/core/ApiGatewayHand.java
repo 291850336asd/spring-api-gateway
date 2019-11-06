@@ -1,8 +1,7 @@
 package com.meng.api.core;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.meng.api.common.ApiException;
-import com.meng.api.common.UtilJson;
+import com.meng.api.common.*;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.context.ApplicationContext;
@@ -25,6 +24,9 @@ public class ApiGatewayHand implements InitializingBean, ApplicationContextAware
     private static final String PARAMS = "params";
 
     ApiStore apiSorte;
+
+    TokenService tokenService;
+
     final ParameterNameDiscoverer parameterUtil;
 
     public ApiGatewayHand(){
@@ -54,9 +56,9 @@ public class ApiGatewayHand implements InitializingBean, ApplicationContextAware
             //构建apiRequest
             apiRequest = buildApiRequest(request);
             //TODO 签名验证
-//            if (apiRequest.getAccessToken() != null){
-//                signCheck(apiRequest);
-//            }
+            if (apiRequest.getAccessToken() != null){
+                signCheck(apiRequest);
+            }
 
             if(apiHanderAdapter.getApiMapping().useLogin()){
                 if(!apiRequest.isLogin()){
@@ -77,6 +79,36 @@ public class ApiGatewayHand implements InitializingBean, ApplicationContextAware
         }
         // 统一返回结果
         returnResult(result, response);
+    }
+
+    private ApiRequest signCheck(ApiRequest request) throws ApiException {
+        Token token = tokenService.getToken(request.getAccessToken());
+        if (token == null) {
+            throw new ApiException("验证失败：指定'Token'不存在");
+        }
+        if (token.getExpiresTime().before(new Date())) {
+            throw new ApiException("验证失败：指定'Token'已失效");
+        }
+        // 生成签名
+        String methodName = request.getMethodName();
+        String accessToken = token.getAccessToken();
+        String secret = token.getSecret();
+        String params = request.getParams();
+        String timestamp = request.getTimestamp();
+        String sign = Md5Util.MD5(secret + methodName + params + token + timestamp + secret);
+
+        if (!sign.toUpperCase().equals(request.getSign())) {
+            throw new ApiException("验证失败：签名非法");
+        }
+
+        // 时间验证
+        if (Math.abs(Long.valueOf(timestamp) - System.currentTimeMillis()) > 10 * 60 * 1000) {
+            throw new ApiException("验证失败：签名失效");
+        }
+
+        request.setLogin(true);
+        request.setMemberId(token.getMemberId());
+        return request;
     }
 
     private ApiRequest buildApiRequest(HttpServletRequest request) {
